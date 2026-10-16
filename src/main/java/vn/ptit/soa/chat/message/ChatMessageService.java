@@ -7,21 +7,31 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.soa.chat.conversation.Conversation;
 import vn.ptit.soa.chat.conversation.ConversationRepository;
+import vn.ptit.soa.chat.media.ChatMediaService;
+import vn.ptit.soa.chat.media.MediaAssetRepository;
+import java.util.Map;
 
 @Service
 @Profile("database-learning")
 public class ChatMessageService {
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
+    private final MediaAssetRepository media;
+    private final ChatOutboxRepository outbox;
 
-    public ChatMessageService(ConversationRepository conversations, ChatMessageRepository messages) {
+    public ChatMessageService(ConversationRepository conversations, ChatMessageRepository messages,
+            MediaAssetRepository media, ChatOutboxRepository outbox) {
         this.conversations = conversations;
         this.messages = messages;
+        this.media = media;
+        this.outbox = outbox;
     }
 
     // Learning-only path: the production sender must come from a verified JWT.
+    @Transactional
     public ChatMessage sendText(String conversationId, String senderId, String content) {
         String roomId = uuid(conversationId);
         String sender = uuid(senderId);
@@ -41,7 +51,46 @@ public class ChatMessageService {
                 "TEXT", content, null, null, false, now, null);
         ChatMessage saved = messages.insert(message);
         conversations.touch(roomId, now);
+        writeEvent(room, saved);
         return saved;
+    }
+
+    @Transactional
+    public ChatMessage sendImage(String conversationId, String senderId, String attachmentUrl) {
+        String roomId = uuid(conversationId);
+        String sender = uuid(senderId);
+        Conversation room = conversations.findById(roomId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation does not exist."));
+        if (!room.participantIds().contains(sender))
+            throw new IllegalArgumentException("Sender is not a conversation participant.");
+        if (!"ACTIVE".equals(room.status())) throw new IllegalArgumentException("Conversation is closed.");
+        String prefix = "/learning/conversations/" + roomId + "/media/";
+        if (attachmentUrl == null || !attachmentUrl.startsWith(prefix))
+            throw new IllegalArgumentException("IMAGE requires a Chat upload URL for this conversation.");
+        String mediaId = uuid(attachmentUrl.substring(prefix.length()));
+        if (!attachmentUrl.equals(ChatMediaService.url(roomId, mediaId)))
+            throw new IllegalArgumentException("Invalid Chat upload URL.");
+        Instant now = Instant.now();
+        if (!media.attach(mediaId, roomId, sender, now))
+            throw new IllegalArgumentException("Image is missing, belongs to someone else, or was already sent.");
+        ChatMessage message = new ChatMessage(UUID.randomUUID().toString(), roomId, sender,
+                "IMAGE", null, attachmentUrl, null, false, now, null);
+        ChatMessage saved = messages.insert(message);
+        conversations.touch(roomId, now);
+        writeEvent(room, saved);
+        return saved;
+    }
+
+    private void writeEvent(Conversation room, ChatMessage message) {
+        List<String> recipients = room.participantIds().stream()
+                .filter(id -> !id.equals(message.senderId())).toList();
+        if (recipients.isEmpty()) throw new IllegalStateException("Conversation has no message recipient.");
+        outbox.insert(new ChatOutboxEvent(UUID.randomUUID().toString(), "MESSAGE_CREATED", 1,
+                "chat-service", message.createdAt(), message.senderId(), recipients,
+                "CONVERSATION", message.conversationId(), "soa.chat.message.v1",
+                message.conversationId(), Map.of("messageId", message.messageId(),
+                    "conversationId", message.conversationId(), "senderId", message.senderId(),
+                    "recipientId", recipients.get(0)), null));
     }
 
     public ReadResult markRead(String conversationId, String readerId, String messageId) {
