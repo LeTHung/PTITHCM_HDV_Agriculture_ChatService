@@ -11,4 +11,6 @@ import org.springframework.data.mongodb.core.mapping.Field;
 public record ChatOutboxEvent(@Id String eventId, String eventType, int eventVersion,
         String sourceService, Instant occurredAt, String actorId, List<String> recipientIds,
         String referenceType, String referenceId, String topic, String eventKey,
-        Map<String, String> data, @Field("published_at") Instant publishedAt) {}
+        Map<String, String> data, @Field("published_at") Instant publishedAt,
+        @Field("claimed_by") String claimedBy, @Field("lease_until") Instant leaseUntil,
+        @Field("attempt_count") int attemptCount) {}

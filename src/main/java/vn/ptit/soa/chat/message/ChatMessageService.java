@@ -90,7 +90,7 @@ public class ChatMessageService {
                 "CONVERSATION", message.conversationId(), "soa.chat.message.v1",
                 message.conversationId(), Map.of("messageId", message.messageId(),
                     "conversationId", message.conversationId(), "senderId", message.senderId(),
-                    "recipientId", recipients.get(0)), null));
+                    "recipientId", recipients.get(0)), null, null, null, 0));
     }
 
     public ReadResult markRead(String conversationId, String readerId, String messageId) {
