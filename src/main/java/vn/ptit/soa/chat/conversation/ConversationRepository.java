@@ -30,6 +30,17 @@ public class ConversationRepository {
         return Optional.ofNullable(mongo.findById(conversationId, Conversation.class));
     }
 
+    public Optional<Conversation> findByContractId(String contractId) {
+        return Optional.ofNullable(mongo.findOne(Query.query(Criteria.where("contract_id").is(contractId)),
+                Conversation.class));
+    }
+
+    public boolean linkContract(String conversationId, String contractId, java.time.Instant at) {
+        Query query = Query.query(Criteria.where("_id").is(conversationId).and("contract_id").is(null));
+        return mongo.updateFirst(query, new Update().set("contract_id", contractId)
+                .set("updated_at", at), Conversation.class).getModifiedCount() == 1;
+    }
+
     public void touch(String conversationId, java.time.Instant at) {
         mongo.updateFirst(Query.query(Criteria.where("_id").is(conversationId)),
                 new Update().set("updated_at", at), Conversation.class);
