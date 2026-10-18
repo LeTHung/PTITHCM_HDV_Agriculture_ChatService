@@ -10,11 +10,22 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.soa.chat.media.ChatImageCodec;
 import vn.ptit.soa.chat.media.ChatMediaService;
+import vn.ptit.soa.chat.conversation.ConversationReadService;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Profile({"learning", "database-learning"})
 @RestControllerAdvice(basePackageClasses = LearningController.class)
 public class LearningExceptionHandler {
+    @ExceptionHandler(ConversationReadService.ConversationNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> conversationNotFound(HttpServletRequest request) {
+        return error(404, "NOT_FOUND", "Conversation not found.", request);
+    }
+
+    @ExceptionHandler(ConversationReadService.ConversationAccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> conversationForbidden(HttpServletRequest request) {
+        return error(403, "FORBIDDEN", "Viewer is not a conversation participant.", request);
+    }
+
     @ExceptionHandler(ChatMediaService.MediaNotFoundException.class)
     public ResponseEntity<Map<String, Object>> notFound(HttpServletRequest request) {
         return error(404, "NOT_FOUND", "Image not found.", request);

@@ -1,6 +1,9 @@
 package vn.ptit.soa.chat.conversation;
 
 import java.util.Optional;
+import java.util.List;
+import java.time.Instant;
+import org.springframework.data.domain.Sort;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
@@ -19,6 +22,11 @@ public class ConversationRepository {
         mongo.indexOps(Conversation.class).ensureIndex(
                 new Index().on("offer_id", org.springframework.data.domain.Sort.Direction.ASC)
                         .unique().named("unique_offer_id"));
+        mongo.indexOps(Conversation.class).ensureIndex(new Index()
+                .on("participant_ids", Sort.Direction.ASC)
+                .on("updated_at", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.DESC)
+                .named("participant_conversation_order"));
     }
 
     public Optional<Conversation> findByOfferId(String offerId) {
@@ -28,6 +36,21 @@ public class ConversationRepository {
 
     public Optional<Conversation> findById(String conversationId) {
         return Optional.ofNullable(mongo.findById(conversationId, Conversation.class));
+    }
+
+    public List<Conversation> listForParticipant(String viewerId, Instant beforeTime,
+            String beforeConversationId, int limit) {
+        Criteria membership = Criteria.where("participant_ids").is(viewerId);
+        Criteria criteria = membership;
+        if (beforeTime != null) {
+            criteria = new Criteria().andOperator(membership, new Criteria().orOperator(
+                    Criteria.where("updated_at").lt(beforeTime),
+                    new Criteria().andOperator(Criteria.where("updated_at").is(beforeTime),
+                            Criteria.where("_id").lt(beforeConversationId))));
+        }
+        return mongo.find(Query.query(criteria)
+                .with(Sort.by(Sort.Order.desc("updated_at"), Sort.Order.desc("_id")))
+                .limit(limit), Conversation.class);
     }
 
     public Optional<Conversation> findByContractId(String contractId) {
