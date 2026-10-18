@@ -39,6 +39,8 @@ public class ChatSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterAfter(new ChatAccessStateFilter(access, json), BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/health").permitAll()
+                        // Browser WebSocket authenticates in its first CONNECT frame, never in the URL.
+                        .requestMatchers("/ws/chat").permitAll()
                         .requestMatchers("/api/v1/conversations", "/api/v1/conversations/**").authenticated()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults())
