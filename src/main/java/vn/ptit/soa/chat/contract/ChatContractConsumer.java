@@ -22,7 +22,8 @@ public class ChatContractConsumer {
         this.contracts = contracts;
     }
 
-    @KafkaListener(topics = "soa.contract.lifecycle.v1", groupId = "chat-contract-v1")
+    @KafkaListener(topics = "soa.contract.lifecycle.v1", groupId = "chat-contract-v1",
+            containerFactory = "chatContractKafkaListenerContainerFactory")
     public void receive(ConsumerRecord<String, String> record) throws IOException {
         JsonNode event = mapper.readTree(record.value());
         String type = required(event, "eventType");
