@@ -63,6 +63,19 @@ class ChatImageMessageServiceTest {
     }
 
     @Test
+    void secureImageUsesOnlyOfficialUrlAndStillAttachesOnce() {
+        String apiUrl = ChatMediaService.apiUrl(ROOM, MEDIA);
+        when(media.attach(eq(MEDIA), eq(ROOM), eq(SENDER), any())).thenReturn(true, false);
+        ChatMessage sent = service.sendImageSecure(ROOM, SENDER, apiUrl);
+        assertEquals(apiUrl, sent.attachmentUrl());
+        assertThrows(IllegalArgumentException.class, () -> service.sendImageSecure(ROOM, SENDER, apiUrl));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.sendImageSecure(ROOM, SENDER, ChatMediaService.url(ROOM, MEDIA)));
+        verify(messages, times(1)).insert(any());
+        verify(outbox, times(1)).insert(any());
+    }
+
+    @Test
     void messageServiceDistinguishesMissingRoomOutsiderAndClosedRoom() {
         when(conversations.findById(ROOM)).thenReturn(Optional.empty());
         assertThrows(ChatMessageService.MissingConversationException.class,

@@ -61,6 +61,16 @@ public class ChatMessageService {
 
     @Transactional
     public ChatMessage sendImage(String conversationId, String senderId, String attachmentUrl) {
+        return sendImageInternal(conversationId, senderId, attachmentUrl, false);
+    }
+
+    @Transactional
+    public ChatMessage sendImageSecure(String conversationId, String senderId, String attachmentUrl) {
+        return sendImageInternal(conversationId, senderId, attachmentUrl, true);
+    }
+
+    private ChatMessage sendImageInternal(String conversationId, String senderId,
+            String attachmentUrl, boolean secureUrl) {
         String roomId = uuid(conversationId);
         String sender = uuid(senderId);
         Conversation room = conversations.findById(roomId)
@@ -68,11 +78,12 @@ public class ChatMessageService {
         if (!room.participantIds().contains(sender))
             throw new NotParticipantException();
         if (!"ACTIVE".equals(room.status())) throw new ClosedConversationException();
-        String prefix = "/learning/conversations/" + roomId + "/media/";
+        String prefix = (secureUrl ? "/api/v1" : "/learning") + "/conversations/" + roomId + "/media/";
         if (attachmentUrl == null || !attachmentUrl.startsWith(prefix))
             throw new IllegalArgumentException("IMAGE requires a Chat upload URL for this conversation.");
         String mediaId = uuid(attachmentUrl.substring(prefix.length()));
-        if (!attachmentUrl.equals(ChatMediaService.url(roomId, mediaId)))
+        String expected = secureUrl ? ChatMediaService.apiUrl(roomId, mediaId) : ChatMediaService.url(roomId, mediaId);
+        if (!attachmentUrl.equals(expected))
             throw new IllegalArgumentException("Invalid Chat upload URL.");
         Instant now = Instant.now();
         if (!media.attach(mediaId, roomId, sender, now))

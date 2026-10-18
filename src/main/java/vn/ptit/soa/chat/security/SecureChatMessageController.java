@@ -22,13 +22,10 @@ import vn.ptit.soa.chat.message.ChatMessageService;
 @Profile("secure & database-learning")
 @RequestMapping("/api/v1/conversations/{conversationId}")
 public class SecureChatMessageController {
-    private final UserAccessStateClient access;
     private final ConversationReadService conversations;
     private final ChatMessageService messages;
 
-    public SecureChatMessageController(UserAccessStateClient access,
-            ConversationReadService conversations, ChatMessageService messages) {
-        this.access = access;
+    public SecureChatMessageController(ConversationReadService conversations, ChatMessageService messages) {
         this.conversations = conversations;
         this.messages = messages;
     }
@@ -48,10 +45,16 @@ public class SecureChatMessageController {
             @RequestBody SendMessageRequest request) {
         requireParticipant(jwt, conversationId);
         if (request.senderId() != null) throw new IllegalArgumentException("Do not send senderId; it comes from JWT.");
-        if (!"TEXT".equals(request.messageType()) || request.attachmentUrl() != null) {
-            throw new IllegalArgumentException("Only TEXT messages are available on this endpoint in this phase.");
+        ChatMessage sent;
+        if ("TEXT".equals(request.messageType())) {
+            if (request.attachmentUrl() != null) throw new IllegalArgumentException("TEXT cannot attach an image.");
+            sent = messages.sendText(conversationId, jwt.getSubject(), request.content());
+        } else if ("IMAGE".equals(request.messageType())) {
+            if (request.content() != null) throw new IllegalArgumentException("IMAGE content must be empty.");
+            sent = messages.sendImageSecure(conversationId, jwt.getSubject(), request.attachmentUrl());
+        } else {
+            throw new IllegalArgumentException("Only TEXT and IMAGE messages can be sent by a client.");
         }
-        ChatMessage sent = messages.sendText(conversationId, jwt.getSubject(), request.content());
         return new SentMessageResponse(sent.messageId(), sent.conversationId(), sent.senderId(),
                 sent.messageType(), sent.content(), sent.attachmentUrl(), sent.createdAt());
     }
@@ -65,7 +68,6 @@ public class SecureChatMessageController {
     }
 
     private void requireParticipant(Jwt jwt, String conversationId) {
-        access.requireActiveParticipant(jwt);
         conversations.detail(conversationId, jwt.getSubject());
     }
 

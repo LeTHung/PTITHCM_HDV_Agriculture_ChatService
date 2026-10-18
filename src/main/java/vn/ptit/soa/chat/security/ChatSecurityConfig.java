@@ -14,6 +14,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 
 @Configuration
 public class ChatSecurityConfig {
@@ -32,9 +33,11 @@ public class ChatSecurityConfig {
 
     @Bean
     @Profile("secure")
-    SecurityFilterChain secureSecurity(HttpSecurity http, ObjectMapper json) throws Exception {
+    SecurityFilterChain secureSecurity(HttpSecurity http, ObjectMapper json,
+            UserAccessStateClient access) throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterAfter(new ChatAccessStateFilter(access, json), BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/health").permitAll()
                         .requestMatchers("/api/v1/conversations", "/api/v1/conversations/**").authenticated()
                         .anyRequest().denyAll())
@@ -51,7 +54,7 @@ public class ChatSecurityConfig {
                 .build();
     }
 
-    private static void writeError(ObjectMapper json, HttpServletResponse response, String path,
+    static void writeError(ObjectMapper json, HttpServletResponse response, String path,
             HttpStatus status, String code, String message) throws IOException {
         response.setStatus(status.value());
         response.setContentType("application/json");

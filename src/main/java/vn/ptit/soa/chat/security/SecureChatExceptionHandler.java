@@ -9,9 +9,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.soa.chat.conversation.ConversationReadService;
 import vn.ptit.soa.chat.message.ChatMessageService;
+import vn.ptit.soa.chat.media.ChatMediaService;
+import vn.ptit.soa.chat.media.ChatImageCodec;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-@RestControllerAdvice(basePackageClasses = {SecureConversationReadController.class, SecureChatMessageController.class})
+@RestControllerAdvice(basePackageClasses = {SecureConversationReadController.class,
+        SecureChatMessageController.class, SecureChatMediaController.class})
 @Profile("secure")
 public class SecureChatExceptionHandler {
     @ExceptionHandler(UserAccessStateClient.AccountForbiddenException.class)
@@ -49,6 +53,26 @@ public class SecureChatExceptionHandler {
     @ExceptionHandler(ChatMessageService.ClosedConversationException.class)
     ResponseEntity<Map<String, Object>> closed(HttpServletRequest request) {
         return error(409, "INVALID_STATE_TRANSITION", "Conversation is closed.", request);
+    }
+
+    @ExceptionHandler(ChatMediaService.MediaNotFoundException.class)
+    ResponseEntity<Map<String, Object>> mediaMissing(HttpServletRequest request) {
+        return error(404, "NOT_FOUND", "Image not found.", request);
+    }
+
+    @ExceptionHandler(ChatMediaService.ConversationClosedException.class)
+    ResponseEntity<Map<String, Object>> mediaClosed(HttpServletRequest request) {
+        return error(409, "INVALID_STATE_TRANSITION", "Conversation is closed.", request);
+    }
+
+    @ExceptionHandler({ChatImageCodec.ImageTooLargeException.class, MaxUploadSizeExceededException.class})
+    ResponseEntity<Map<String, Object>> mediaTooLarge(HttpServletRequest request) {
+        return error(413, "PAYLOAD_TOO_LARGE", "Image exceeds 5 MiB.", request);
+    }
+
+    @ExceptionHandler(ChatImageCodec.UnsupportedImageException.class)
+    ResponseEntity<Map<String, Object>> mediaUnsupported(HttpServletRequest request) {
+        return error(415, "UNSUPPORTED_MEDIA_TYPE", "Only JPEG, PNG and WebP are supported.", request);
     }
 
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})

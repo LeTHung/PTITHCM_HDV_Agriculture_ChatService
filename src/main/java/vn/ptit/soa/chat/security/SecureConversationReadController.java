@@ -15,25 +15,21 @@ import vn.ptit.soa.chat.conversation.ConversationReadService;
 @RequestMapping("/api/v1/conversations")
 public class SecureConversationReadController {
     private final ConversationReadService reads;
-    private final UserAccessStateClient access;
 
-    public SecureConversationReadController(ConversationReadService reads, UserAccessStateClient access) {
+    public SecureConversationReadController(ConversationReadService reads) {
         this.reads = reads;
-        this.access = access;
     }
 
     @GetMapping
     public ConversationReadService.ConversationPage list(@AuthenticationPrincipal Jwt jwt,
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(required = false) String cursor) {
-        access.requireActiveParticipant(jwt);
         return reads.list(jwt.getSubject(), limit, cursor);
     }
 
     @GetMapping("/{conversationId}")
     public ConversationReadService.ConversationDetail detail(@AuthenticationPrincipal Jwt jwt,
             @PathVariable String conversationId) {
-        access.requireActiveParticipant(jwt);
         return reads.detail(conversationId, jwt.getSubject());
     }
 }

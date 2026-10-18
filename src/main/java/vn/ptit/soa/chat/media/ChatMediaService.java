@@ -39,7 +39,7 @@ public class ChatMediaService {
     public UploadResult upload(String conversationId, String actorId, MultipartFile file) {
         String room = id(conversationId);
         String actor = id(actorId);
-        requireParticipant(room, actor);
+        requireParticipant(room, actor, true);
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Image file is required.");
         if (file.getSize() > ChatImageCodec.MAX_BYTES) throw new ChatImageCodec.ImageTooLargeException();
         try {
@@ -62,10 +62,16 @@ public class ChatMediaService {
         }
     }
 
+    public UploadResult uploadSecure(String conversationId, String actorId, MultipartFile file) {
+        UploadResult saved = upload(conversationId, actorId, file);
+        return new UploadResult(saved.mediaId(), apiUrl(id(conversationId), saved.mediaId()),
+                saved.contentType(), saved.sizeBytes());
+    }
+
     public DownloadResult download(String conversationId, String mediaId, String actorId) {
         String room = id(conversationId);
         String actor = id(actorId);
-        requireParticipant(room, actor);
+        requireParticipant(room, actor, false);
         MediaAsset asset = assets.find(id(mediaId), room).orElseThrow(MediaNotFoundException::new);
         if (asset.attachedAt() == null && !actor.equals(asset.ownerAccountId())) throw new MediaNotFoundException();
         try {
@@ -109,15 +115,20 @@ public class ChatMediaService {
         }
     }
 
-    public Conversation requireParticipant(String room, String actor) {
+    private Conversation requireParticipant(String room, String actor, boolean requireActiveRoom) {
         Conversation conversation = conversations.findById(room).orElseThrow(MediaNotFoundException::new);
         if (!conversation.participantIds().contains(actor)) throw new MediaNotFoundException();
-        if (!"ACTIVE".equals(conversation.status())) throw new IllegalArgumentException("Conversation is closed.");
+        if (requireActiveRoom && !"ACTIVE".equals(conversation.status()))
+            throw new ConversationClosedException();
         return conversation;
     }
 
     public static String url(String conversationId, String mediaId) {
         return "/learning/conversations/" + conversationId + "/media/" + mediaId;
+    }
+
+    public static String apiUrl(String conversationId, String mediaId) {
+        return "/api/v1/conversations/" + conversationId + "/media/" + mediaId;
     }
 
     public static String id(String value) {
@@ -143,4 +154,7 @@ public class ChatMediaService {
     public record UploadResult(String mediaId, String attachmentUrl, String contentType, long sizeBytes) {}
     public record DownloadResult(String contentType, byte[] bytes) {}
     public static class MediaNotFoundException extends RuntimeException {}
+    public static class ConversationClosedException extends IllegalArgumentException {
+        public ConversationClosedException() { super("Conversation is closed."); }
+    }
 }
