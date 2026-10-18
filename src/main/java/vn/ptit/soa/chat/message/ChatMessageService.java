@@ -33,18 +33,18 @@ public class ChatMessageService {
         this.events = events;
     }
 
-    // Learning-only path: the production sender must come from a verified JWT.
+    // Callers must supply an identity already verified by their HTTP/WebSocket boundary.
     @Transactional
     public ChatMessage sendText(String conversationId, String senderId, String content) {
         String roomId = uuid(conversationId);
         String sender = uuid(senderId);
         Conversation room = conversations.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation does not exist."));
+                .orElseThrow(MissingConversationException::new);
         if (!room.participantIds().contains(sender)) {
-            throw new IllegalArgumentException("Sender is not a conversation participant.");
+            throw new NotParticipantException();
         }
         if (!"ACTIVE".equals(room.status())) {
-            throw new IllegalArgumentException("Conversation is closed.");
+            throw new ClosedConversationException();
         }
         if (content == null || content.isBlank() || content.codePointCount(0, content.length()) > 2000) {
             throw new IllegalArgumentException("TEXT content must contain 1 to 2000 characters.");
@@ -64,10 +64,10 @@ public class ChatMessageService {
         String roomId = uuid(conversationId);
         String sender = uuid(senderId);
         Conversation room = conversations.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation does not exist."));
+                .orElseThrow(MissingConversationException::new);
         if (!room.participantIds().contains(sender))
-            throw new IllegalArgumentException("Sender is not a conversation participant.");
-        if (!"ACTIVE".equals(room.status())) throw new IllegalArgumentException("Conversation is closed.");
+            throw new NotParticipantException();
+        if (!"ACTIVE".equals(room.status())) throw new ClosedConversationException();
         String prefix = "/learning/conversations/" + roomId + "/media/";
         if (attachmentUrl == null || !attachmentUrl.startsWith(prefix))
             throw new IllegalArgumentException("IMAGE requires a Chat upload URL for this conversation.");
@@ -104,18 +104,18 @@ public class ChatMessageService {
         String reader = uuid(readerId);
         String message = uuid(messageId);
         Conversation room = conversations.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation does not exist."));
+                .orElseThrow(MissingConversationException::new);
         if (!room.participantIds().contains(reader)) {
-            throw new IllegalArgumentException("Reader is not a conversation participant.");
+            throw new NotParticipantException();
         }
         if (!"ACTIVE".equals(room.status())) {
-            throw new IllegalArgumentException("Conversation is closed.");
+            throw new ClosedConversationException();
         }
         ChatMessage target = messages.findById(message)
                 .filter(found -> roomId.equals(found.conversationId()))
-                .orElseThrow(() -> new IllegalArgumentException("Message does not exist in this conversation."));
+                .orElseThrow(MissingMessageException::new);
         if (reader.equals(target.senderId())) {
-            throw new IllegalArgumentException("A sender cannot mark their own message as read.");
+            throw new NotReadableMessageException();
         }
         boolean changed = false;
         if (!target.isRead()) {
@@ -135,9 +135,9 @@ public class ChatMessageService {
         String roomId = uuid(conversationId);
         String viewer = uuid(viewerId);
         Conversation room = conversations.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation does not exist."));
+                .orElseThrow(MissingConversationException::new);
         if (!room.participantIds().contains(viewer)) {
-            throw new IllegalArgumentException("Viewer is not a conversation participant.");
+            throw new NotParticipantException();
         }
         if (limit < 1 || limit > 100) {
             throw new IllegalArgumentException("Limit must be between 1 and 100.");
@@ -185,5 +185,25 @@ public class ChatMessageService {
         } catch (IllegalArgumentException invalid) {
             throw new IllegalArgumentException("ID must be a UUID.");
         }
+    }
+
+    public static class MissingConversationException extends IllegalArgumentException {
+        public MissingConversationException() { super("Conversation does not exist."); }
+    }
+
+    public static class NotParticipantException extends IllegalArgumentException {
+        public NotParticipantException() { super("Not a conversation participant."); }
+    }
+
+    public static class ClosedConversationException extends IllegalArgumentException {
+        public ClosedConversationException() { super("Conversation is closed."); }
+    }
+
+    public static class MissingMessageException extends IllegalArgumentException {
+        public MissingMessageException() { super("Message does not exist in this conversation."); }
+    }
+
+    public static class NotReadableMessageException extends IllegalArgumentException {
+        public NotReadableMessageException() { super("A sender cannot mark their own message as read."); }
     }
 }

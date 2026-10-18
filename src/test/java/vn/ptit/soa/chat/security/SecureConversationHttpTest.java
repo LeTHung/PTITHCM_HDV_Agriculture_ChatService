@@ -3,7 +3,11 @@ package vn.ptit.soa.chat.security;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,12 +39,16 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import vn.ptit.soa.chat.conversation.ConversationReadService;
+import vn.ptit.soa.chat.message.ChatMessage;
+import vn.ptit.soa.chat.message.ChatMessageService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles({"secure", "database-learning"})
 class SecureConversationHttpTest {
     private static final String ACCOUNT = "233196d7-d149-451d-8006-91e6563be4f0";
+    private static final String ROOM = "f72a08bd-33d7-4221-9e55-55d5d7f2e2f0";
+    private static final String MESSAGE = "a9d2c9e8-c777-4683-8238-1fda1bb4c653";
     private static final AtomicInteger STATE = new AtomicInteger();
     private static final KeyPair KEY;
     private static final Path KEY_DIR;
@@ -84,6 +92,7 @@ class SecureConversationHttpTest {
 
     @Autowired MockMvc mvc;
     @MockitoBean ConversationReadService reads;
+    @MockitoBean ChatMessageService messages;
 
     @Test
     void requestMustHaveValidJwtAndActiveStateBeforeReading() throws Exception {
@@ -101,6 +110,78 @@ class SecureConversationHttpTest {
         STATE.set(2);
         mvc.perform(get("/api/v1/conversations").header("Authorization", "Bearer " + token()))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ACCESS_STATE_UNAVAILABLE"));
+    }
+
+    @Test
+    void messageEndpointsUseJwtIdentityAndRejectSpoofedSender() throws Exception {
+        STATE.set(0);
+        when(messages.sendText(ROOM, ACCOUNT, "Hello")).thenReturn(new ChatMessage(
+                MESSAGE, ROOM, ACCOUNT, "TEXT", "Hello", null, null, false, Instant.now(), null));
+        mvc.perform(post("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json")
+                        .content("{\"messageType\":\"TEXT\",\"content\":\"Hello\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.senderId").value(ACCOUNT))
+                .andExpect(jsonPath("$.isRead").doesNotExist());
+        verify(messages).sendText(ROOM, ACCOUNT, "Hello");
+
+        mvc.perform(post("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json")
+                        .content("{\"messageType\":\"TEXT\",\"content\":\"No\",\"senderId\":\"fake\"}"))
+                .andExpect(status().isBadRequest());
+        verify(messages, never()).sendText(ROOM, "fake", "No");
+        mvc.perform(post("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json")
+                        .content("{\"messageType\":\"IMAGE\",\"attachmentUrl\":\"/x\"}"))
+                .andExpect(status().isBadRequest());
+
+        when(messages.history(ROOM, ACCOUNT, 20, null))
+                .thenReturn(new ChatMessageService.MessagePage(List.of(), null));
+        mvc.perform(get("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").isArray());
+        when(messages.markRead(ROOM, ACCOUNT, MESSAGE))
+                .thenReturn(new ChatMessageService.ReadResult(MESSAGE, true, Instant.now(), 0));
+        mvc.perform(put("/api/v1/conversations/{id}/read", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json").content("{\"messageId\":\"" + MESSAGE + "\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.isRead").value(true));
+        verify(messages).markRead(ROOM, ACCOUNT, MESSAGE);
+    }
+
+    @Test
+    void messageEndpointsCheckAccountRoomAndBusinessErrors() throws Exception {
+        STATE.set(1);
+        mvc.perform(get("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCOUNT_NOT_ACTIVE"));
+        STATE.set(2);
+        mvc.perform(get("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ACCESS_STATE_UNAVAILABLE"));
+        STATE.set(0);
+        when(reads.detail(ROOM, ACCOUNT)).thenThrow(new ConversationReadService.ConversationAccessDeniedException());
+        mvc.perform(get("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        org.mockito.Mockito.reset(reads);
+        when(messages.sendText(ROOM, ACCOUNT, "Closed"))
+                .thenThrow(new ChatMessageService.ClosedConversationException());
+        mvc.perform(post("/api/v1/conversations/{id}/messages", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json")
+                        .content("{\"messageType\":\"TEXT\",\"content\":\"Closed\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE_TRANSITION"));
+        when(messages.markRead(ROOM, ACCOUNT, MESSAGE))
+                .thenThrow(new ChatMessageService.MissingMessageException());
+        mvc.perform(put("/api/v1/conversations/{id}/read", ROOM)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType("application/json").content("{\"messageId\":\"" + MESSAGE + "\"}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     private String token() throws Exception {

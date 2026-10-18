@@ -61,4 +61,32 @@ class ChatImageMessageServiceTest {
                         + RECIPIENT + "/media/" + MEDIA));
         verifyNoInteractions(media);
     }
+
+    @Test
+    void messageServiceDistinguishesMissingRoomOutsiderAndClosedRoom() {
+        when(conversations.findById(ROOM)).thenReturn(Optional.empty());
+        assertThrows(ChatMessageService.MissingConversationException.class,
+                () -> service.history(ROOM, SENDER, 20, null));
+        when(conversations.findById(ROOM)).thenReturn(Optional.of(new Conversation(ROOM,
+                List.of(SENDER, RECIPIENT), null, null, "ACTIVE", Instant.now(), Instant.now())));
+        assertThrows(ChatMessageService.NotParticipantException.class,
+                () -> service.sendText(ROOM, MEDIA, "Hello"));
+        when(conversations.findById(ROOM)).thenReturn(Optional.of(new Conversation(ROOM,
+                List.of(SENDER, RECIPIENT), null, null, "CLOSED", Instant.now(), Instant.now())));
+        assertThrows(ChatMessageService.ClosedConversationException.class,
+                () -> service.sendText(ROOM, SENDER, "Hello"));
+        verify(messages, never()).insert(any());
+    }
+
+    @Test
+    void readCannotTargetMissingOrOwnMessage() {
+        when(messages.findById(MEDIA)).thenReturn(Optional.empty());
+        assertThrows(ChatMessageService.MissingMessageException.class,
+                () -> service.markRead(ROOM, RECIPIENT, MEDIA));
+        when(messages.findById(MEDIA)).thenReturn(Optional.of(new ChatMessage(MEDIA, ROOM, SENDER,
+                "TEXT", "Hello", null, null, false, Instant.now(), null)));
+        assertThrows(ChatMessageService.NotReadableMessageException.class,
+                () -> service.markRead(ROOM, SENDER, MEDIA));
+        verify(messages, never()).markReadIfUnread(any(), any(), any());
+    }
 }

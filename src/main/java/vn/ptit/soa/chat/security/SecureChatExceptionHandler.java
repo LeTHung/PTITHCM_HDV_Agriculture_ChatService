@@ -8,8 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.soa.chat.conversation.ConversationReadService;
+import vn.ptit.soa.chat.message.ChatMessageService;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
-@RestControllerAdvice(basePackageClasses = SecureConversationReadController.class)
+@RestControllerAdvice(basePackageClasses = {SecureConversationReadController.class, SecureChatMessageController.class})
 @Profile("secure")
 public class SecureChatExceptionHandler {
     @ExceptionHandler(UserAccessStateClient.AccountForbiddenException.class)
@@ -32,9 +34,28 @@ public class SecureChatExceptionHandler {
         return error(404, "NOT_FOUND", "Conversation not found.", request);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String, Object>> invalid(IllegalArgumentException exception, HttpServletRequest request) {
-        return error(400, "VALIDATION_ERROR", exception.getMessage(), request);
+    @ExceptionHandler({ChatMessageService.MissingConversationException.class,
+            ChatMessageService.MissingMessageException.class})
+    ResponseEntity<Map<String, Object>> missingMessage(HttpServletRequest request) {
+        return error(404, "NOT_FOUND", "Conversation or message not found.", request);
+    }
+
+    @ExceptionHandler({ChatMessageService.NotParticipantException.class,
+            ChatMessageService.NotReadableMessageException.class})
+    ResponseEntity<Map<String, Object>> messageForbidden(HttpServletRequest request) {
+        return error(403, "FORBIDDEN", "Not allowed to access this message.", request);
+    }
+
+    @ExceptionHandler(ChatMessageService.ClosedConversationException.class)
+    ResponseEntity<Map<String, Object>> closed(HttpServletRequest request) {
+        return error(409, "INVALID_STATE_TRANSITION", "Conversation is closed.", request);
+    }
+
+    @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})
+    ResponseEntity<Map<String, Object>> invalid(Exception exception, HttpServletRequest request) {
+        String message = exception instanceof IllegalArgumentException
+                ? exception.getMessage() : "Body must be valid JSON with the expected fields.";
+        return error(400, "VALIDATION_ERROR", message, request);
     }
 
     private ResponseEntity<Map<String, Object>> error(int status, String code, String message,
