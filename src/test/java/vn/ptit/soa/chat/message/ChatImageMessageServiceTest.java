@@ -10,6 +10,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import vn.ptit.soa.chat.conversation.Conversation;
 import vn.ptit.soa.chat.conversation.ConversationRepository;
 import vn.ptit.soa.chat.media.ChatMediaService;
@@ -28,7 +29,8 @@ class ChatImageMessageServiceTest {
 
     @BeforeEach
     void setup() {
-        service = new ChatMessageService(conversations, messages, media, outbox);
+        service = new ChatMessageService(conversations, messages, media, outbox,
+                mock(ApplicationEventPublisher.class));
         when(conversations.findById(ROOM)).thenReturn(Optional.of(new Conversation(ROOM,
                 List.of(SENDER, RECIPIENT), null, null, "ACTIVE", Instant.now(), Instant.now())));
         when(messages.insert(any())).thenAnswer(invocation -> invocation.getArgument(0));

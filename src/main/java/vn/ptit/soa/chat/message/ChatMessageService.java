@@ -6,6 +6,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.soa.chat.conversation.Conversation;
@@ -21,13 +22,15 @@ public class ChatMessageService {
     private final ChatMessageRepository messages;
     private final MediaAssetRepository media;
     private final ChatOutboxRepository outbox;
+    private final ApplicationEventPublisher events;
 
     public ChatMessageService(ConversationRepository conversations, ChatMessageRepository messages,
-            MediaAssetRepository media, ChatOutboxRepository outbox) {
+            MediaAssetRepository media, ChatOutboxRepository outbox, ApplicationEventPublisher events) {
         this.conversations = conversations;
         this.messages = messages;
         this.media = media;
         this.outbox = outbox;
+        this.events = events;
     }
 
     // Learning-only path: the production sender must come from a verified JWT.
@@ -51,7 +54,8 @@ public class ChatMessageService {
                 "TEXT", content, null, null, false, now, null);
         ChatMessage saved = messages.insert(message);
         conversations.touch(roomId, now);
-        writeEvent(room, saved);
+        String recipient = writeEvent(room, saved);
+        events.publishEvent(new ChatRealtimeEvents.MessageSent(saved, recipient));
         return saved;
     }
 
@@ -77,11 +81,12 @@ public class ChatMessageService {
                 "IMAGE", null, attachmentUrl, null, false, now, null);
         ChatMessage saved = messages.insert(message);
         conversations.touch(roomId, now);
-        writeEvent(room, saved);
+        String recipient = writeEvent(room, saved);
+        events.publishEvent(new ChatRealtimeEvents.MessageSent(saved, recipient));
         return saved;
     }
 
-    private void writeEvent(Conversation room, ChatMessage message) {
+    private String writeEvent(Conversation room, ChatMessage message) {
         List<String> recipients = room.participantIds().stream()
                 .filter(id -> !id.equals(message.senderId())).toList();
         if (recipients.isEmpty()) throw new IllegalStateException("Conversation has no message recipient.");
@@ -91,6 +96,7 @@ public class ChatMessageService {
                 message.conversationId(), Map.of("messageId", message.messageId(),
                     "conversationId", message.conversationId(), "senderId", message.senderId(),
                     "recipientId", recipients.get(0)), null, null, null, 0));
+        return recipients.get(0);
     }
 
     public ReadResult markRead(String conversationId, String readerId, String messageId) {
@@ -111,12 +117,16 @@ public class ChatMessageService {
         if (reader.equals(target.senderId())) {
             throw new IllegalArgumentException("A sender cannot mark their own message as read.");
         }
+        boolean changed = false;
         if (!target.isRead()) {
-            target = messages.markReadIfUnread(message, roomId, Instant.now())
-                    .orElseGet(() -> messages.findById(message).orElseThrow());
+            var updated = messages.markReadIfUnread(message, roomId, Instant.now());
+            changed = updated.isPresent();
+            target = updated.orElseGet(() -> messages.findById(message).orElseThrow());
         }
-        return new ReadResult(target.messageId(), target.isRead(), target.readAt(),
+        ReadResult result = new ReadResult(target.messageId(), target.isRead(), target.readAt(),
                 messages.countUnreadFromOthers(roomId, reader));
+        if (changed) events.publishEvent(new ChatRealtimeEvents.MessageRead(roomId, reader, result));
+        return result;
     }
 
     public record ReadResult(String messageId, boolean isRead, Instant readAt, long unreadCount) {}
