@@ -201,6 +201,22 @@ public class SecureChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void contractUpdated(ChatRealtimeEvents.ContractUpdated event) {
+        try {
+            Map<String, Object> update = new LinkedHashMap<>();
+            update.put("type", "contractUpdated");
+            update.put("conversationId", event.conversationId());
+            update.put("contractId", event.contractId());
+            update.put("status", event.status());
+            update.put("occurredAt", event.occurredAt() != null ? event.occurredAt().toString() : null);
+            broadcast(event.conversationId(), update);
+        } catch (RuntimeException failure) {
+            log.warn("Could not deliver a Chat contract update after commit. Cause: {}",
+                    failure.getClass().getSimpleName());
+        }
+    }
+
     private void broadcast(String roomId, Object payload) {
         for (Client client : clients.values()) {
             if (roomId.equals(client.conversationId)) deliver(client, roomId, payload);

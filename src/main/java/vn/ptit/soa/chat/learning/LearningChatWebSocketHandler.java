@@ -131,6 +131,19 @@ public class LearningChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void contractUpdated(ChatRealtimeEvents.ContractUpdated event) {
+        try {
+            broadcast(event.conversationId(), Map.of("type", "contractUpdated",
+                    "conversationId", event.conversationId(), "contractId", event.contractId(),
+                    "status", event.status(),
+                    "occurredAt", event.occurredAt() != null ? event.occurredAt().toString() : ""));
+        } catch (RuntimeException failure) {
+            log.warn("Could not deliver a Chat contract update after commit. Cause: {}",
+                    failure.getClass().getSimpleName());
+        }
+    }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         clients.remove(session.getId());

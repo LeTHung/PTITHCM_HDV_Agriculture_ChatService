@@ -19,10 +19,11 @@ class ChatContractConsumerTest {
         consumer.receive(record(CONTRACT, """
                 {"eventType":"CONTRACT_STATUS_CHANGED","eventVersion":1,"sourceService":"payment-service",
                  "referenceType":"CONTRACT","referenceId":"%s",
+                 "occurredAt":"2026-10-27T00:00:00Z",
                  "data":{"contractId":"%s","farmerId":"%s","traderId":"%s",
                          "previousStatus":"CREATED","status":"PENDING_DEPOSIT","stateVersion":2}}
                 """.formatted(CONTRACT, CONTRACT, FARMER, TRADER)));
-        verify(service).contractStatusChanged(CONTRACT, FARMER, TRADER);
+        verify(service).contractStatusChanged(CONTRACT, "PENDING_DEPOSIT", FARMER, TRADER, java.time.Instant.parse("2026-10-27T00:00:00Z"));
         verify(service, never()).contractCreated(any(), any(), any(), any(), any());
     }
 

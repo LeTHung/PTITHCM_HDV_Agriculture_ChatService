@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,16 +13,20 @@ import vn.ptit.soa.chat.conversation.Conversation;
 import vn.ptit.soa.chat.conversation.ConversationRepository;
 import vn.ptit.soa.chat.message.ChatMessage;
 import vn.ptit.soa.chat.message.ChatMessageRepository;
+import vn.ptit.soa.chat.message.ChatRealtimeEvents;
 
 @Service
 @Profile("database-learning")
 public class ChatContractService {
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
+    private final ApplicationEventPublisher events;
 
-    public ChatContractService(ConversationRepository conversations, ChatMessageRepository messages) {
+    public ChatContractService(ConversationRepository conversations, ChatMessageRepository messages,
+            ApplicationEventPublisher events) {
         this.conversations = conversations;
         this.messages = messages;
+        this.events = events;
     }
 
     @Transactional
@@ -42,16 +47,22 @@ public class ChatContractService {
         // Stable UUID makes redelivery idempotent, including a crash after Mongo commit but before Kafka offset commit.
         String cardId = UUID.nameUUIDFromBytes(("CONTRACT:" + contract).getBytes(StandardCharsets.UTF_8)).toString();
         if (messages.findById(cardId).isEmpty()) {
-            messages.insert(new ChatMessage(cardId, room.conversationId(), uuid(traderId),
-                    "CONTRACT", null, null, contract, true, occurredAt, occurredAt));
+            ChatMessage card = new ChatMessage(cardId, room.conversationId(), uuid(traderId),
+                    "CONTRACT", null, null, contract, true, occurredAt, occurredAt);
+            messages.insert(card);
+            events.publishEvent(new ChatRealtimeEvents.MessageSent(card, uuid(farmerId)));
         }
     }
 
-    public void contractStatusChanged(String contractId, String farmerId, String traderId) {
+    public void contractStatusChanged(String contractId, String status, String farmerId, String traderId, Instant occurredAt) {
         Conversation room = conversations.findByContractId(uuid(contractId))
                 .orElseThrow(() -> new IllegalStateException("Contract card is not linked yet."));
         checkParticipants(room, uuid(farmerId), uuid(traderId));
-        // Card holds only contractId. The client refreshes the authoritative Contract API for its status.
+        events.publishEvent(new ChatRealtimeEvents.ContractUpdated(room.conversationId(), uuid(contractId), status, occurredAt));
+    }
+
+    public void contractStatusChanged(String contractId, String farmerId, String traderId) {
+        contractStatusChanged(contractId, "UPDATED", farmerId, traderId, Instant.now());
     }
 
     private void checkParticipants(Conversation room, String farmer, String trader) {

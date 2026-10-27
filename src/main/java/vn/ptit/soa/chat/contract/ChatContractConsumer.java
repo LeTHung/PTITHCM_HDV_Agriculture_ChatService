@@ -45,11 +45,13 @@ public class ChatContractConsumer {
                     Instant.parse(required(event, "occurredAt")));
             case "CONTRACT_STATUS_CHANGED" -> {
                 required(data, "previousStatus");
-                required(data, "status");
+                String status = required(data, "status");
                 if (data.path("stateVersion").asLong(-1) < 1) {
                     throw new IllegalArgumentException("Missing Contract stateVersion.");
                 }
-                contracts.contractStatusChanged(contractId, farmer, trader);
+                Instant occurredAt = event.hasNonNull("occurredAt")
+                        ? Instant.parse(event.get("occurredAt").asText()) : Instant.now();
+                contracts.contractStatusChanged(contractId, status, farmer, trader, occurredAt);
             }
             default -> throw new IllegalArgumentException("Unsupported Contract event type: " + type);
         }
