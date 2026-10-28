@@ -27,7 +27,7 @@ public class ChatSecurityConfig {
     @Bean
     @Profile("!secure")
     SecurityFilterChain learningSecurity(HttpSecurity http) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
+        return http.cors(Customizer.withDefaults()).csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll()).build();
     }
 
@@ -35,7 +35,7 @@ public class ChatSecurityConfig {
     @Profile("secure")
     SecurityFilterChain secureSecurity(HttpSecurity http, ObjectMapper json,
             UserAccessStateClient access) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
+        return http.cors(Customizer.withDefaults()).csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterAfter(new ChatAccessStateFilter(access, json), BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/health").permitAll()
