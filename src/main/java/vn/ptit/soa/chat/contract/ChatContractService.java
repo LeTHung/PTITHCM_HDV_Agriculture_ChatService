@@ -54,15 +54,15 @@ public class ChatContractService {
         }
     }
 
-    public void contractStatusChanged(String contractId, String status, String farmerId, String traderId, Instant occurredAt) {
+    @Transactional
+    public void contractStatusChanged(String contractId, String status, String farmerId, String traderId, Instant occurredAt, long stateVersion) {
+        if (stateVersion < 1) throw new IllegalArgumentException("Invalid Contract stateVersion.");
         Conversation room = conversations.findByContractId(uuid(contractId))
                 .orElseThrow(() -> new IllegalStateException("Contract card is not linked yet."));
         checkParticipants(room, uuid(farmerId), uuid(traderId));
-        events.publishEvent(new ChatRealtimeEvents.ContractUpdated(room.conversationId(), uuid(contractId), status, occurredAt));
-    }
-
-    public void contractStatusChanged(String contractId, String farmerId, String traderId) {
-        contractStatusChanged(contractId, "UPDATED", farmerId, traderId, Instant.now());
+        if (conversations.advanceContractVersion(room.conversationId(), uuid(contractId), stateVersion, status)) {
+            events.publishEvent(new ChatRealtimeEvents.ContractUpdated(room.conversationId(), uuid(contractId), status, occurredAt, stateVersion));
+        }
     }
 
     private void checkParticipants(Conversation room, String farmer, String trader) {

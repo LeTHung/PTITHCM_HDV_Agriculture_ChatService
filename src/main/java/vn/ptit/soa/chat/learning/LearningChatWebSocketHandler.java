@@ -137,6 +137,7 @@ public class LearningChatWebSocketHandler extends TextWebSocketHandler {
             broadcast(event.conversationId(), Map.of("type", "contractUpdated",
                     "conversationId", event.conversationId(), "contractId", event.contractId(),
                     "status", event.status(),
+                    "stateVersion", event.stateVersion(),
                     "occurredAt", event.occurredAt() != null ? event.occurredAt().toString() : ""));
         } catch (RuntimeException failure) {
             log.warn("Could not deliver a Chat contract update after commit. Cause: {}",

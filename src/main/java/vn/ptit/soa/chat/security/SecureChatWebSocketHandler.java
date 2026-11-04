@@ -209,6 +209,7 @@ public class SecureChatWebSocketHandler extends TextWebSocketHandler {
             update.put("conversationId", event.conversationId());
             update.put("contractId", event.contractId());
             update.put("status", event.status());
+            update.put("stateVersion", event.stateVersion());
             update.put("occurredAt", event.occurredAt() != null ? event.occurredAt().toString() : null);
             broadcast(event.conversationId(), update);
         } catch (RuntimeException failure) {

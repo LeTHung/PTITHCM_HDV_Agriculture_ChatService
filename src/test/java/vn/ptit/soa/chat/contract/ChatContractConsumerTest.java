@@ -23,7 +23,7 @@ class ChatContractConsumerTest {
                  "data":{"contractId":"%s","farmerId":"%s","traderId":"%s",
                          "previousStatus":"CREATED","status":"PENDING_DEPOSIT","stateVersion":2}}
                 """.formatted(CONTRACT, CONTRACT, FARMER, TRADER)));
-        verify(service).contractStatusChanged(CONTRACT, "PENDING_DEPOSIT", FARMER, TRADER, java.time.Instant.parse("2026-10-27T00:00:00Z"));
+        verify(service).contractStatusChanged(CONTRACT, "PENDING_DEPOSIT", FARMER, TRADER, java.time.Instant.parse("2026-10-27T00:00:00Z"), 2L);
         verify(service, never()).contractCreated(any(), any(), any(), any(), any());
     }
 

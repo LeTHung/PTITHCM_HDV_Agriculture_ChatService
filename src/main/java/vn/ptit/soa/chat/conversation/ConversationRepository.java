@@ -64,6 +64,17 @@ public class ConversationRepository {
                 .set("updated_at", at), Conversation.class).getModifiedCount() == 1;
     }
 
+    public boolean advanceContractVersion(String conversationId, String contractId,
+            long version, String status) {
+        Criteria older = new Criteria().orOperator(
+                Criteria.where("contract_state_version").exists(false),
+                Criteria.where("contract_state_version").lt(version));
+        Query query = Query.query(new Criteria().andOperator(
+                Criteria.where("_id").is(conversationId).and("contract_id").is(contractId), older));
+        return mongo.updateFirst(query, new Update().set("contract_state_version", version)
+                .set("contract_status", status), Conversation.class).getModifiedCount() == 1;
+    }
+
     public void touch(String conversationId, java.time.Instant at) {
         mongo.updateFirst(Query.query(Criteria.where("_id").is(conversationId)),
                 new Update().set("updated_at", at), Conversation.class);

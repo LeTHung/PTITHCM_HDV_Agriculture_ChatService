@@ -10,5 +10,5 @@ public final class ChatRealtimeEvents {
     public record MessageRead(String conversationId, String readerId,
             ChatMessageService.ReadResult result) {}
 
-    public record ContractUpdated(String conversationId, String contractId, String status, Instant occurredAt) {}
+    public record ContractUpdated(String conversationId, String contractId, String status, Instant occurredAt, long stateVersion) {}
 }

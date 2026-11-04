@@ -64,9 +64,32 @@ class ChatContractServiceTest {
         ChatContractService service = new ChatContractService(rooms, messages, events);
         Instant now = Instant.now();
 
-        service.contractStatusChanged(CONTRACT, "ACTIVE", FARMER, TRADER, now);
+        when(rooms.advanceContractVersion(ROOM, CONTRACT, 3L, "ACTIVE")).thenReturn(true);
+        service.contractStatusChanged(CONTRACT, "ACTIVE", FARMER, TRADER, now, 3L);
 
-        verify(events).publishEvent(eq(new ChatRealtimeEvents.ContractUpdated(ROOM, CONTRACT, "ACTIVE", now)));
+        verify(events).publishEvent(eq(new ChatRealtimeEvents.ContractUpdated(ROOM, CONTRACT, "ACTIVE", now, 3L)));
+    }
+
+    @Test
+    void replayAndOlderVersionsDoNotPublishRealtimeUpdates() {
+        ConversationRepository rooms = mock(ConversationRepository.class);
+        ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+        when(rooms.findByContractId(CONTRACT)).thenReturn(Optional.of(room(CONTRACT)));
+        java.util.concurrent.atomic.AtomicLong latest = new java.util.concurrent.atomic.AtomicLong();
+        when(rooms.advanceContractVersion(eq(ROOM), eq(CONTRACT), anyLong(), anyString()))
+                .thenAnswer(call -> {
+                    long version = call.getArgument(2);
+                    if (version <= latest.get()) return false;
+                    latest.set(version);
+                    return true;
+                });
+        ChatContractService service = new ChatContractService(rooms, mock(ChatMessageRepository.class), events);
+        Instant now = Instant.now();
+        service.contractStatusChanged(CONTRACT, "COMPLETED", FARMER, TRADER, now, 4L);
+        service.contractStatusChanged(CONTRACT, "ACTIVE", FARMER, TRADER, now, 3L);
+        service.contractStatusChanged(CONTRACT, "COMPLETED", FARMER, TRADER, now, 4L);
+        verify(events, times(1)).publishEvent(any(ChatRealtimeEvents.ContractUpdated.class));
+        verify(events).publishEvent(new ChatRealtimeEvents.ContractUpdated(ROOM, CONTRACT, "COMPLETED", now, 4L));
     }
 
     private Conversation room(String contractId) {

@@ -51,7 +51,8 @@ public class ChatContractConsumer {
                 }
                 Instant occurredAt = event.hasNonNull("occurredAt")
                         ? Instant.parse(event.get("occurredAt").asText()) : Instant.now();
-                contracts.contractStatusChanged(contractId, status, farmer, trader, occurredAt);
+                contracts.contractStatusChanged(contractId, status, farmer, trader, occurredAt,
+                        data.path("stateVersion").asLong());
             }
             default -> throw new IllegalArgumentException("Unsupported Contract event type: " + type);
         }
