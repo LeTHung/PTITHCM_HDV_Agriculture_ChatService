@@ -25,14 +25,19 @@ public class LearningChatMessageController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ChatMessage send(@PathVariable String conversationId, @RequestBody SendTextRequest request) {
-        if (!"TEXT".equals(request.messageType())) {
-            throw new IllegalArgumentException("This learning endpoint accepts TEXT only.");
+    public ChatMessage send(@PathVariable String conversationId, @RequestBody SendMessageRequest request) {
+        if ("TEXT".equals(request.messageType())) {
+            if (request.attachmentUrl() != null) throw new IllegalArgumentException("TEXT cannot attach an image.");
+            return messages.sendText(conversationId, request.senderId(), request.content());
         }
-        return messages.sendText(conversationId, request.senderId(), request.content());
+        if ("IMAGE".equals(request.messageType())) {
+            if (request.content() != null) throw new IllegalArgumentException("IMAGE content must be empty.");
+            return messages.sendImage(conversationId, request.senderId(), request.attachmentUrl());
+        }
+        throw new IllegalArgumentException("Only TEXT and IMAGE messages can be sent by a client.");
     }
 
-    public record SendTextRequest(String senderId, String messageType, String content) {}
+    public record SendMessageRequest(String senderId, String messageType, String content, String attachmentUrl) {}
 
     @GetMapping
     public ChatMessageService.MessagePage history(@PathVariable String conversationId,
